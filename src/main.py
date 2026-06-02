@@ -1,32 +1,58 @@
+from collections import Counter
+
 from createAgents import GenerateAgents
 from graphCreation import ContactGraphBuilder
+from clusterAssignment import ClusterAssigner
+
+
+def report_clusters(agents, n_clusters: int) -> None:
+    """Print each cluster's size and average attributes so we can sanity-check
+    that the groups actually differ from one another."""
+    print("\n=== cluster report ===")
+    for cid in range(n_clusters):
+        members = [a for a in agents if a.getClusterId() == cid]
+        if not members:
+            print(f"cluster {cid}: (empty)")
+            continue
+
+        n = len(members)
+        avg_age = sum(a.getAttributes()["age"] for a in members) / n
+        avg_risk = sum(a.getAttributes()["risk"] for a in members) / n
+        avg_mob = sum(a.getAttributes()["mobility"] for a in members) / n
+        pct_vax = 100 * sum(a.getAttributes()["vaccinated"] for a in members) / n
+
+        print(
+            f"cluster {cid}: n={n:3d} | "
+            f"avg_age={avg_age:5.1f} | "
+            f"avg_risk={avg_risk:.2f} | "
+            f"avg_mobility={avg_mob:.2f} | "
+            f"vaccinated={pct_vax:4.0f}%"
+        )
 
 
 def main():
-    # 1) create the population
     NUM_AGENTS = 200
-    agents = GenerateAgents(NUM_AGENTS).createAgents()
+    N_CLUSTERS = 4
 
-    # lookup so we can turn a neighbor's id (what the graph stores)
-    # back into the agent object (where the live state lives)
+    agents = GenerateAgents(NUM_AGENTS).createAgents()
     agents_by_id = {a.getAgentId(): a for a in agents}
 
-    # 2) build the contact graph from those agents
+    # assign clusters (replaces the random cluster_id from createAgents)
+    assigner = ClusterAssigner(agents, n_clusters=N_CLUSTERS, seed=42)
+    assigner.assign()
+
+    # --- did the clustering work? ---
+    print(f"cluster sizes: {assigner.clusterSizes()}")
+    report_clusters(agents, N_CLUSTERS)
+
+    # build the contact graph
     builder = ContactGraphBuilder(agents, avg_contacts=8, seed=42)
     graph = builder.build()
 
-    # 3) sanity check
-    print(f"agents: {len(agents)}")
-    print(f"nodes:  {graph.number_of_nodes()}")
-    print(f"edges:  {graph.number_of_edges()}")
-    print(f"avg degree: {2 * graph.number_of_edges() / graph.number_of_nodes():.1f}")
-
-    # look at one agent and its neighbors
+    print(f"\nnodes: {graph.number_of_nodes()}, edges: {graph.number_of_edges()}")
     sample_id = agents[0].getAgentId()
-    neighbors = list(graph.neighbors(sample_id))
-    print(f"\nagent {sample_id}: {agents_by_id[sample_id]}")
-    print(f"  neighbors: {neighbors}")
-    print(f"  infected neighbors: {builder.infected_neighbor_count(sample_id, agents_by_id)}")
+    print(f"agent {sample_id}: {agents_by_id[sample_id]}")
+    print(f"  neighbors: {list(graph.neighbors(sample_id))}")
 
 
 if __name__ == "__main__":
